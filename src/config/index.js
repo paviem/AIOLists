@@ -1,6 +1,6 @@
 // src/config/index.js
 const ITEMS_PER_PAGE = 20;
-const PORT = process.env.PORT || 7000;
+const PORT = process.env.PORT || 7001;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 // Performance optimization constants

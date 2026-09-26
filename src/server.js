@@ -6,6 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const { PORT, IS_PRODUCTION, TMDB_BEARER_TOKEN } = require('./config');
 const configureRoutes = require('./routes');
+const { createProfileRouter, profileMiddleware, logProfileStorage } = require('./utils/profiles');
 
 async function initializeApp() {
   try {
@@ -15,12 +16,17 @@ async function initializeApp() {
     app.use(express.json());
     app.use(express.static(path.join(__dirname, '..', 'public')));
 
+    // Fixed-address profiles (must run before the config-hash routes)
+    app.use('/api', createProfileRouter());
+    app.use(profileMiddleware());
+    logProfileStorage();
+
     configureRoutes(app);
     
     app.listen(PORT, () => {
       if (!IS_PRODUCTION) {
         console.log(`AIOLists Stremio Addon running on port ${PORT}`);
-        console.log(`Admin panel: http://localhost:7000/configure`);
+        console.log(`Admin panel: http://localhost:${PORT}/configure`);
       }
     });
     

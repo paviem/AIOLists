@@ -30,3 +30,5 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+# Hugging Face upload copy
+hf-space-upload/

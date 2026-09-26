@@ -364,6 +364,21 @@ document.addEventListener('DOMContentLoaded', function() {
     searchNotification: document.getElementById('searchNotification')
   };
 
+  // --- Remember the latest config in this browser ---
+  const LAST_CONFIG_KEY = 'aiolists:lastConfigHash';
+  function rememberConfigFromPath(path) {
+    const m = /^\/([^\/]+)\/configure\/?$/.exec(path || '');
+    if (m && m[1] !== 'api' && m[1] !== 'import-shared') {
+      try { localStorage.setItem(LAST_CONFIG_KEY, m[1]); } catch (e) {}
+    }
+  }
+  const originalReplaceState = window.history.replaceState.bind(window.history);
+  window.history.replaceState = function (st, title, url) {
+    const result = originalReplaceState(st, title, url);
+    rememberConfigFromPath(window.location.pathname);
+    return result;
+  };
+
   async function init() {
     setupEventListeners();
     initializeSearchableLanguageDropdown();
@@ -389,7 +404,19 @@ document.addEventListener('DOMContentLoaded', function() {
       initialConfigHash = traktState || pathParts[0];
       action = 'trakt-callback';
     } else if (pathParts.length === 0 || (pathParts.length === 1 && pathParts[0] === 'configure')) {
-        // Fresh page, no config hash
+        // Fresh page, no config hash - reopen the last config saved in this browser
+        let savedHash = null;
+        if (urlParams.get('missingProfile')) {
+            // The saved profile no longer exists on this server - start fresh
+            try { localStorage.removeItem(LAST_CONFIG_KEY); } catch (e) {}
+        } else {
+            try { savedHash = localStorage.getItem(LAST_CONFIG_KEY); } catch (e) {}
+        }
+        if (savedHash) {
+            initialConfigHash = savedHash;
+            state.isLoadingFromUrl = true;
+            window.history.replaceState({}, '', `/${savedHash}/configure`);
+        }
     } else if (pathParts.length >= 1 && pathParts[0] === 'import-shared' && pathParts[1]) {
         action = 'import-shared';
         initialConfigHash = pathParts[1];
@@ -432,9 +459,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     } else if (initialConfigHash) {
         state.configHash = initialConfigHash;
+        rememberConfigFromPath(window.location.pathname);
     } else {
         await createNewEmptyConfig();
     }
+
+    await ensureFixedAddressProfile();
 
     await fetchAppVersion();
     createRandomUsersEditor();
@@ -496,6 +526,25 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (err) {
         console.error('Copy blank char error:', err);
         showNotification('settings', 'Failed to copy blank character.', 'error', true);
+    }
+  }
+
+  // Swap a raw config hash for a permanent profile ID (u-xxxx) so the
+  // Stremio install address stays the same when settings change.
+  async function ensureFixedAddressProfile() {
+    if (!state.configHash || state.configHash.startsWith('u-')) return;
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ configHash: state.configHash })
+      });
+      const data = await response.json();
+      if (data.success && data.profileId) {
+        state.configHash = data.profileId;
+        window.history.replaceState({}, '', `/${state.configHash}/configure`);
+      }
+    } catch (error) {
+      console.warn('Could not create fixed-address profile, using a normal config address:', error);
     }
   }
 
